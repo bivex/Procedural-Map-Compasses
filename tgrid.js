@@ -218,28 +218,23 @@ function generateTerrain(rulesText) {
 
     const config = {
         size: 512,
-        noiseScale: 80,
-        octaves: 5,
-        persistence: 0.5,
-        lacunarity: 2.0,
-        seed: Math.floor(Math.random()*100000),
+        npts: 8192,
+        ncities: 15,
+        nterrs: 5,
         riverCount: 8,
-        moisture: 0.5,
-        contourInterval: 20
+        contourInterval: 20,
+        extent: { width: 960, height: 500 }
     };
 
     for (let op of ops) {
         switch(op.name) {
             case 'SIZE': config.size = op.args[0]; break;
-            case 'HEIGHTMAP':
-                config.noiseScale = op.args[0];
-                config.octaves = op.args[1];
-                config.persistence = op.args[2];
-                config.lacunarity = op.args[3];
-                config.seed = op.args[4];
+            case 'MESH':
+                config.npts = op.args[0];
+                config.ncities = op.args[1];
+                config.nterrs = op.args[2];
                 break;
             case 'RIVERS': config.riverCount = op.args[0]; break;
-            case 'BIOMES': config.moisture = op.args[0]; break;
             case 'CONTOURS': config.contourInterval = op.args[0]; break;
         }
     }

@@ -15,7 +15,7 @@
     <script type="module">
       import Compass from './compass.js';
       var testButton = document.getElementById("testButton");
-      var svg = d3.select("#svg");
+       var svg = window.d3.select("#svg");
       testButton.onclick = function () {
 	  Compass.test(svg); };
     </script>

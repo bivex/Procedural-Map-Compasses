@@ -3,15 +3,15 @@
 //
 import Utils from './utils.js';
 
-const lineFunc = d3.line()
+const lineFunc = window.d3.line()
       .x(pt => pt[0])
       .y(pt => pt[1])
-      .curve(d3.curveLinearClosed);
+      .curve(window.d3.curveLinearClosed);
 
-const lineFuncOpen = d3.line()
+const lineFuncOpen = window.d3.line()
       .x(pt => pt[0])
       .y(pt => pt[1])
-      .curve(d3.curveLinear);
+      .curve(window.d3.curveLinear);
 
 function circle(svg, center, radius, lineWidth, lineColor, fillColor) {
     svg.append('circle')
@@ -273,10 +273,10 @@ function divideLineSegment(p1, p2, n) {
     return npl;
 };
 
-const lineFuncWavy = d3.line()
+const lineFuncWavy = window.d3.line()
       .x(pt => pt[0])
       .y(pt => pt[1])
-      .curve(d3.curveNatural);
+      .curve(window.d3.curveNatural);
 
 function rwave(svg, center, radius, startAngle, repeats, angle, i, op, whiteBorder=true) {
     let start = [center[0], center[1]-radius];
@@ -364,10 +364,10 @@ function rwave(svg, center, radius, startAngle, repeats, angle, i, op, whiteBord
 
 // Terrain drawing helpers
 function polyline(svg, points, width, color, opacity = 1.0) {
-    const lineFunc = d3.line()
+    const lineFunc = window.d3.line()
         .x(p => p[0])
         .y(p => p[1])
-        .curve(d3.curveLinear);
+        .curve(window.d3.curveLinear);
 
     svg.append('path')
         .attr('d', lineFunc(points))

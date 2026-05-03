@@ -19,7 +19,7 @@
       var regenerateBtn = document.getElementById("regenerateBtn");
       var info = document.getElementById("info");
       var status = document.getElementById("status");
-      var container = d3.select("#map");
+       var container = window.d3.select("#map");
 
       function updateInfo(config) {
 	  info.innerHTML = `Size: ${config.size}px<br>

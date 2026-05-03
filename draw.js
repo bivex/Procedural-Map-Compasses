@@ -362,6 +362,40 @@ function rwave(svg, center, radius, startAngle, repeats, angle, i, op, whiteBord
 	.attr('d', lineFuncWavy(cline));
 };
 
+// Terrain drawing helpers
+function polyline(svg, points, width, color, opacity = 1.0) {
+    const lineFunc = d3.line()
+        .x(p => p[0])
+        .y(p => p[1])
+        .curve(d3.curveLinear);
+
+    svg.append('path')
+        .attr('d', lineFunc(points))
+        .style('stroke-width', width)
+        .style('stroke', color)
+        .style('fill', 'none')
+        .style('opacity', opacity);
+};
+
+function grid(svg, width, height, cellSize, stroke = '#ccc') {
+    // Vertical lines
+    for (let x = 0; x <= width; x += cellSize) {
+        svg.append('line')
+            .attr('x1', x).attr('y1', 0)
+            .attr('x2', x).attr('y2', height)
+            .style('stroke', stroke)
+            .style('stroke-width', 0.5);
+    }
+    // Horizontal lines
+    for (let y = 0; y <= height; y += cellSize) {
+        svg.append('line')
+            .attr('x1', 0).attr('y1', y)
+            .attr('x2', width).attr('y2', y)
+            .style('stroke', stroke)
+            .style('stroke-width', 0.5);
+    }
+};
+
 export default {
     circle: circle,
     rcircle: rcircle,
@@ -373,6 +407,8 @@ export default {
     rarc: rarc,
     rdiamond: rdiamond,
     rwave: rwave,
+    polyline: polyline,
+    grid: grid,
 
     dummy: null
 };

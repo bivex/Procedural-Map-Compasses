@@ -1,0 +1,22 @@
+<terrain> => <terrainConfig> <heightmap> <rivers> <biomes> <contours>;
+
+# Configuration
+<terrainConfig> => SIZE(`512`) | SIZE(`768`) | SIZE(`1024`);
+<heightmap> => HEIGHTMAP(<$noiseScale>, <$octaves>, <$persistence>, <$lacunarity>, <$seed>);
+<$noiseScale> => 50 | 80 | 100 | 120;
+<$octaves> => 4 | 5 | 6;
+<$persistence> => 0.4 | 0.5 | 0.6;
+<$lacunarity> => 2.0 | 2.5;
+<$seed> => `Math.floor(Math.random()*100000)`;
+
+# Rivers flow from high elevations to sea level
+<rivers> => RIVERS(<$riverCount>);
+<$riverCount> => 5 | 8 | 12 | 16;
+
+# Biome definitions
+<biomes> => BIOMES(<$biomeMoisture>);
+<$biomeMoisture> => 0.3 | 0.5 | 0.7;
+
+# Contour lines at specified intervals
+<contours> => CONTOURS(<$contourInterval>);
+<$contourInterval> => 10 | 20 | 50;

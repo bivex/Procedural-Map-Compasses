@@ -2,10 +2,11 @@
   <body>
     <div id="all" style="display: flex; flex-direction: row;">
       <div id="controls"
-	   style="display: flex; flex-direction: column; flex: 0 0 100px">
+	   style="display: flex; flex-direction: column; flex: 0 0 120px">
 	<button id="generateBtn">Generate Terrain</button>
 	<button id="regenerateBtn">Regenerate (new seed)</button>
-	<p id="info" style="font-size: 12px; margin: 10px 0;"></p>
+	<p id="info" style="font-size: 11px; margin: 8px 0; color: #555;"></p>
+	<p id="status" style="font-size: 10px; color: #888;"></p>
       </div>
       <div id="map" style="margin-left:10px;">
 	<svg id="svg" width="600" height="600"></svg>
@@ -17,27 +18,33 @@
       var generateBtn = document.getElementById("generateBtn");
       var regenerateBtn = document.getElementById("regenerateBtn");
       var info = document.getElementById("info");
+      var status = document.getElementById("status");
       var svg = d3.select("#svg");
 
-      generateBtn.onclick = function () {
-	  Terrain.test(svg).then(config => {
-	      info.innerHTML = `Size: ${config.size}px<br>
+      function updateInfo(config) {
+	  info.innerHTML = `Size: ${config.size}px<br>
 River count: ${config.riverCount}<br>
 Moisture: ${config.moisture}<br>
-Contours every: ${config.contourInterval}<br>
+Contours: ${config.contourInterval}<br>
 Seed: ${config.seed}`;
+      }
+
+      generateBtn.onclick = function () {
+	  status.textContent = "Generating…";
+	  Terrain.test(svg).then(config => {
+	      updateInfo(config);
+	      status.textContent = "Done";
+	      setTimeout(() => status.textContent = "", 1500);
 	  });
       };
 
       regenerateBtn.onclick = function () {
-	  // Force new seed by reloading rules (could be handled better)
-	  info.innerHTML = "Generating with new random seed...";
+	  status.textContent = "Regenerating…";
+	  Terrain.cancel && Terrain.cancel(); // cancel any running worker
 	  Terrain.test(svg).then(config => {
-	      info.innerHTML = `Size: ${config.size}px<br>
-River count: ${config.riverCount}<br>
-Moisture: ${config.moisture}<br>
-Contours every: ${config.contourInterval}<br>
-Seed: ${config.seed}`;
+	      updateInfo(config);
+	      status.textContent = "Done";
+	      setTimeout(() => status.textContent = "", 1500);
 	  });
       };
     </script>

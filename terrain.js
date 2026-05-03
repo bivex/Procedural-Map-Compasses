@@ -1,249 +1,164 @@
 //
-//  Top level file for Terrain Generation
+//  Top level file for Terrain Generation (Web Worker version)
+//  Heavy computation runs in background worker; main thread only renders
 //
-import Utils from './utils.js';
-import Draw from './draw.js';
 import TGrid from './tgrid.js';
 
-//
-//  Generate elevation heightmap using ValueNoise
-//
-function generateHeightmap(width, height, config) {
-    const noise = new Utils.ValueNoise(config.seed);
-    const heights = new Array(height);
-
-    for (let y = 0; y < height; y++) {
-        heights[y] = new Array(width);
-        for (let x = 0; x < width; x++) {
-            heights[y][x] = noise.getHeight(
-                x, y, width, height,
-                config.octaves,
-                config.persistence,
-                config.lacunarity
-            );
-        }
-    }
-    return heights;
-}
+let worker = null;
+let terrainConfig = null;
 
 //
-//  Simulate rivers: flow from high elevations downhill to edges
-//  Simple cellular automata approach
+//  Render to Canvas (biome colors + hillshade + rivers + contours)
 //
-function generateRivers(heights, riverCount, width, height) {
-    const rivers = [];
+function renderResult(canvas, result) {
+    const { heights, rivers, biomes, contours, config } = result;
+    const ctx = canvas.getContext('2d');
+    const w = config.size | 0; // force integer
+    const h = config.size | 0;
+    console.log('Render: size=', w, 'heights dims:', heights.length, heights[0].length);
+    const imgData = ctx.createImageData(w, h);
+    const data = imgData.data;
 
-    // Find high points as river sources
-    const sources = [];
-    const margin = 20;
+    // Biome color palette
+    const palette = [
+        [30, 80, 160],    // 0: deep water
+        [60, 120, 200],   // 1: shallow water
+        [255, 220, 100],  // 2: beach
+        [120, 180, 100],  // 3: grassland
+        [50, 120, 50],    // 4: forest
+        [180, 150, 80],   // 5: savanna (brownish-yellow)
+        [100, 80, 50],    // 6: mountain
+        [255, 255, 255]   // 7: snow
+    ];
 
-    for (let i = 0; i < riverCount * 10; i++) {
-        const x = Math.floor(Utils.randIntRange(margin, width - margin));
-        const y = Math.floor(Utils.randIntRange(margin, height - margin));
-        const h = heights[y][x];
-        // Pick points in top 30% of elevation
-        if (h > 0.7) {
-            sources.push({ x, y, path: [] });
-            if (sources.length >= riverCount) break;
-        }
-    }
+    // Simple hillshade using Sobel-like gradient
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const idx = (y * w + x) * 4;
+            const biomeId = biomes[y][x];
+            const baseColor = palette[biomeId] || palette[3];
 
-    // Trace flow downhill for each source
-    for (let src of sources) {
-        let x = src.x;
-        let y = src.y;
-        const path = [{x, y}];
-
-        for (let step = 0; step < 500; step++) {
-            // Find lowest neighbor
-            let minH = heights[y][x];
-            let minX = x, minY = y;
-            const dirs = [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]];
-
-            for (let [dx, dy] of dirs) {
-                const nx = x + dx, ny = y + dy;
-                if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                    const nh = heights[ny][nx];
-                    if (nh < minH) {
-                        minH = nh;
-                        minX = nx;
-                        minY = ny;
-                    }
-                }
+            // Compute slope shading from nearby height samples
+            let dx = 0, dy = 0;
+            if (x > 0 && x < w-1 && y > 0 && y < h-1) {
+                dx = (heights[y][x+1] - heights[y][x-1]) * 0.5;
+                dy = (heights[y+1][x] - heights[y-1][x]) * 0.5;
             }
+            const shade = 1 - 0.2 * Math.sqrt(dx*dx + dy*dy);
+            const r = Math.min(255, baseColor[0] * shade);
+            const g = Math.min(255, baseColor[1] * shade);
+            const b = Math.min(255, baseColor[2] * shade);
 
-            // Stop if at edge or stuck
-            if (minX <= 0 || minX >= width-1 || minY <= 0 || minY >= height-1) break;
-            if (minX === x && minY === y) break;
-
-            x = minX; y = minY;
-            path.push({x, y});
-        }
-        rivers.push(path);
-    }
-
-    return rivers;
-}
-
-//
-//  Assign biomes based on elevation and moisture
-//
-function generateBiomes(heights, moisture) {
-    const height = heights.length;
-    const width = heights[0].length;
-    const biomes = new Array(height);
-
-    for (let y = 0; y < height; y++) {
-        biomes[y] = new Array(width);
-        for (let x = 0; x < width; x++) {
-            const h = heights[y][x];
-            let biome;
-
-            if (h < 0.3) {
-                biome = 'water';  // Deep water
-            } else if (h < 0.35) {
-                biome = moisture > 0.6 ? 'wetland' : 'beach';
-            } else if (h < 0.5) {
-                biome = 'grassland';
-            } else if (h < 0.7) {
-                biome = moisture > 0.5 ? 'forest' : 'savanna';
-            } else if (h < 0.85) {
-                biome = 'mountain';
-            } else {
-                biome = 'snow';
-            }
-
-            biomes[y][x] = biome;
+            data[idx] = r;
+            data[idx+1] = g;
+            data[idx+2] = b;
+            data[idx+3] = 255;
         }
     }
-    return biomes;
-}
+    ctx.putImageData(imgData, 0, 0);
 
-//
-//  Extract contour lines at specified interval
-//
-function generateContours(heights, interval) {
-    const contours = [];
-    const height = heights.length;
-    const width = heights[0].length;
-
-    // Build elevation levels
-    const levels = [];
-    for (let i = interval; i < 1; i += interval) {
-        levels.push(i);
-    }
-
-    for (let level of levels) {
-        const line = [];
-        const threshold = level;
-
-        // Marching squares (simplified)
-        for (let y = 0; y < height - 1; y++) {
-            for (let x = 0; x < width - 1; x++) {
-                const h00 = heights[y][x] >= threshold ? 1 : 0;
-                const h10 = heights[y][x+1] >= threshold ? 1 : 0;
-                const h01 = heights[y+1][x] >= threshold ? 1 : 0;
-                const h11 = heights[y+1][x+1] >= threshold ? 1 : 0;
-
-                const config = (h00 << 3) | (h10 << 2) | (h01 << 1) | h11;
-                // Only draw lines on 0-1, 1-0 transitions
-                if (config === 5 || config === 10) {
-                    // Interpolate position along edge
-                    const t = (threshold - (heights[y][x] * (1 - 0) + 0)) /
-                              ((heights[y+1][x+1] + heights[y][x] - heights[y][x+1] - heights[y+1][x]) * 0.5 + 0.001);
-                    const px = x + 0.5;
-                    const py = y + 0.5;
-                    line.push({ x: px, y: py });
-                }
+    // Rivers (blue overlay)
+    if (rivers.length > 0) {
+        ctx.save();
+        ctx.strokeStyle = '#1565C0';
+        ctx.lineWidth = Math.max(2, w/256);
+        ctx.lineCap = 'round';
+        ctx.globalAlpha = 0.85;
+        ctx.beginPath();
+        for (let river of rivers) {
+            if (river.length < 2) continue;
+            ctx.moveTo(river[0].x + 0.5, river[0].y + 0.5);
+            for (let i = 1; i < river.length; i++) {
+                ctx.lineTo(river[i].x + 0.5, river[i].y + 0.5);
             }
         }
-        if (line.length > 0) contours.push({ level, line });
+        ctx.stroke();
+        ctx.restore();
     }
-    return contours;
-}
 
-//
-//  Render terrain to SVG
-//
-function renderTerrain(svg, width, height, heights, biomes, rivers, contours, config) {
-    // Cell size
-    const cellSize = Math.min(width, height) / Math.max(heights.length, heights[0].length);
-
-    // Color schemes
-    const biomeColors = {
-        water: '#1E88E5',
-        wetland: '#43A047',
-        beach: '#FDD835',
-        grassland: '#7CB342',
-        forest: '#2E7D32',
-        savanna: '#CDDC39',
-        mountain: '#795548',
-        snow: '#FFFFFF'
-    };
-
-    // Draw biome cells
-    for (let y = 0; y < heights.length; y++) {
-        for (let x = 0; x < heights[0].length; x++) {
-            const biome = biomes[y][x];
-            svg.append('rect')
-                .attr('x', x * cellSize)
-                .attr('y', y * cellSize)
-                .attr('width', Math.ceil(cellSize))
-                .attr('height', Math.ceil(cellSize))
-                .style('fill', biomeColors[biome])
-                .style('stroke', 'none');
+    // Contours (thin grey lines)
+    if (contours.length > 0) {
+        ctx.save();
+        ctx.strokeStyle = '#444';
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        for (let contour of contours) {
+            const pts = contour.line;
+            if (pts.length < 2) continue;
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length; i++) {
+                ctx.lineTo(pts[i].x, pts[i].y);
+            }
         }
+        ctx.stroke();
+        ctx.restore();
     }
-
-    // Draw rivers (simple polyline)
-    rivers.forEach(river => {
-        if (river.length < 2) return;
-        const points = river.map(p => [p.x * cellSize, p.y * cellSize]);
-        Draw.polyline(svg, points, 2, '#1976D2');
-    });
-
-    // Draw contour lines
-    contours.forEach(contour => {
-        if (contour.line.length < 2) return;
-        const points = contour.line.map(p => [p.x * cellSize, p.y * cellSize]);
-        Draw.polyline(svg, points, 1, '#555', 0.6);
-    });
 }
 
 //
-//  Main entry: parse rules and render
+//  Load grammar and create/start worker
 //
-async function loadTerrainRules() {
-    const response = await fetch('terrain.rules');
-    const text = await response.text();
-    return text;
+async function loadConfig() {
+    if (terrainConfig) return terrainConfig;
+    const resp = await fetch('terrain.rules');
+    const text = await resp.text();
+    terrainConfig = TGrid.generateTerrain(text);
+    return terrainConfig;
 }
 
+//
+//  Get or create worker
+//
+function getWorker() {
+    if (!worker) {
+        worker = new Worker(new URL('./terrain.worker.js', import.meta.url), { type: 'module' });
+    }
+    return worker;
+}
+
+//
+//  Cancel any running computation
+//
+function cancel() {
+    if (worker) {
+        worker.terminate();
+        worker = null;
+    }
+}
+
+//
+//  Main test function - asynchronous
+//
 async function test(svg) {
-    // Clear previous
+    // Clear any previous
     svg.selectAll('*').remove();
 
-    // Parse config from grammar
-    const rulesText = await loadTerrainRules();
-    const config = TGrid.generateTerrain(rulesText);
+    // Load config (or use cached)
+    const config = await loadConfig();
 
-    console.log('Terrain config:', config);
+    // Create canvas element
+    const canvas = document.createElement('canvas');
+    canvas.width = config.size;
+    canvas.height = config.size;
+    canvas.style.width = config.size + 'px';
+    canvas.style.height = config.size + 'px';
+    canvas.style.imageRendering = 'pixelated';
+    svg.node().appendChild(canvas);
 
-    const width = config.size || 512;
-    const height = config.size || 512;
-
-    // Generate components
-    const heights = generateHeightmap(width, height, config);
-    const rivers = generateRivers(heights, config.riverCount || 8, width, height);
-    const biomes = generateBiomes(heights, config.moisture || 0.5);
-    const contours = generateContours(heights, config.contourInterval || 20);
-
-    // Render
-    renderTerrain(svg, width, height, heights, biomes, rivers, contours, config);
-
-    return config;
+    // Spawn worker and wait for result
+    return new Promise((resolve) => {
+        const w = getWorker();
+        w.onmessage = function(e) {
+            const result = e.data;
+            renderResult(canvas, result);
+            resolve(config);
+        };
+        w.postMessage({ config });
+    });
 }
 
 export default {
-    test
+    test,
+    cancel
 };

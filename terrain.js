@@ -152,12 +152,12 @@ async function test(container) {
     canvas.height = config.size;
     // Visual size: fit within container (max 600px) but keep aspect ratio
     const maxDisplay = 600;
-    const displaySize = Math.min(size, maxDisplay);
+    const displaySize = Math.min(config.size, maxDisplay);
     canvas.style.width = displaySize + 'px';
     canvas.style.height = displaySize + 'px';
     canvas.style.imageRendering = 'pixelated';
-    canvas.style.border = '1px solid #999';
     canvas.style.display = 'block';
+    // No border - container has it
 
     container.node().appendChild(canvas);
 
@@ -178,11 +178,3 @@ export default {
     cancel
 };
 
-        w.postMessage({ config });
-    });
-}
-
-export default {
-    test,
-    cancel
-};

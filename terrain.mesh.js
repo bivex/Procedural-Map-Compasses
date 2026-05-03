@@ -252,38 +252,83 @@ function peaky(h) {
 
 function fillSinks(h, epsilon = 1e-5) {
     const infinity = 999999;
-    const newh = zero(h.mesh);
-    const {length} = h;
+    const mesh = h.mesh;
+    const n = h.length;
+    const result = new Float32Array(n);
 
-    for (let i = 0; i < length; i++) {
-        if (isnearedge(h.mesh, i)) newh[i] = h[i];
-        else newh[i] = infinity;
+    const heap = [];
+    function heapPush(idx, pri) {
+        heap.push({idx, priority: pri});
+        siftUp(heap.length - 1);
+    }
+    function heapPop() {
+        if (heap.length === 0) return null;
+        const top = heap[0];
+        const last = heap.pop();
+        if (heap.length > 0) {
+            heap[0] = last;
+            siftDown(0);
+        }
+        return top;
+    }
+    function siftUp(i) {
+        while (i > 0) {
+            const p = (i - 1) >> 1;
+            if (heap[p].priority <= heap[i].priority) break;
+            const tmp = heap[i]; heap[i] = heap[p]; heap[p] = tmp;
+            i = p;
+        }
+    }
+    function siftDown(i) {
+        let len = heap.length;
+        while (true) {
+            let left = i * 2 + 1, right = i * 2 + 2;
+            let smallest = i;
+            if (left < len && heap[left].priority < heap[smallest].priority) smallest = left;
+            if (right < len && heap[right].priority < heap[smallest].priority) smallest = right;
+            if (smallest === i) break;
+            const tmp = heap[i]; heap[i] = heap[smallest]; heap[smallest] = tmp;
+            i = smallest;
+        }
     }
 
-    let iter = 0;
-    const maxIters = 2000;
-    while (true) {
-        if (++iter > maxIters) {
-            console.error('[fillSinks] MAX ITERS REACHED:', maxIters);
-            return newh;
+    const processed = new Array(n).fill(false);
+    const edgeSet = new Set();
+
+    for (let i = 0; i < n; i++) {
+        if (isnearedge(mesh, i)) {
+            result[i] = h[i];
+            heapPush(i, result[i]);
+            edgeSet.add(i);
+        } else {
+            result[i] = infinity;
         }
-        if (iter % 100 === 0) console.log('[fillSinks] iter', iter);
-        let changed = false;
-        for (let i = 0; i < length; i++) {
-            if (newh[i] === h[i]) continue;
-            const nbs = neighbours(h.mesh, i);
-            for (let j = 0; j < nbs.length; j++) {
-                const nj = nbs[j];
-                if (h[i] >= newh[nj] + epsilon) { newh[i] = h[i]; changed = true; break; }
-                const oh = newh[nj] + epsilon;
-                if (newh[i] > oh && oh > h[i]) { newh[i] = oh; changed = true; }
+    }
+
+    while (heap.length > 0) {
+        const item = heapPop();
+        const i = item.idx;
+        const pri = item.priority;
+        if (processed[i]) continue;
+        if (result[i] !== pri) continue; // outdated entry
+        processed[i] = true;
+        const nbs = neighbours(mesh, i);
+        for (const j of nbs) {
+            const candidate = Math.max(h[j], result[i] + epsilon);
+            if (candidate < result[j]) {
+                result[j] = candidate;
+                heapPush(j, candidate);
             }
         }
-        if (!changed) {
-            console.log('[fillSinks] converged after', iter, 'iters');
-            return newh;
-        }
     }
+
+    // Sanitize any unreachable interior sink (should not happen, but guard anyway)
+    for (let i = 0; i < n; i++) {
+        if (result[i] >= infinity) result[i] = h[i];
+    }
+
+    result.mesh = mesh;
+    return result;
 }
 
 // ─── Downhill & flux ───────────────────────────────────────────────────────
@@ -325,13 +370,15 @@ function trislope(h, i) {
     const p0 = h.mesh.vxs[nbs[0]];
     const p1 = h.mesh.vxs[nbs[1]];
     const p2 = h.mesh.vxs[nbs[2]];
-
     const x1 = p1[0] - p0[0], x2 = p2[0] - p0[0];
     const y1 = p1[1] - p0[1], y2 = p2[1] - p0[1];
     const det = x1*y2 - x2*y1;
+    if (Math.abs(det) < 1e-12) return [0, 0];
     const h1 = h[nbs[1]] - h[nbs[0]];
     const h2 = h[nbs[2]] - h[nbs[0]];
-    return [(y2*h1 - y1*h2)/det, (-x2*h1 + x1*h2)/det];
+    const sx = (y2*h1 - y1*h2)/det;
+    const sy = (-x2*h1 + x1*h2)/det;
+    return (isFinite(sx) && isFinite(sy)) ? [sx, sy] : [0, 0];
 }
 
 function getSlope(h) {

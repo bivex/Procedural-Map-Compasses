@@ -174,7 +174,11 @@ function computeSlopeHatching(h) {
         s /= nbs.length; s2 /= nbs.length;
         if (Math.abs(s) < Math.random() * 0.3) continue;
 
+        // Guard against non-finite slope components
+        if (!isFinite(s) || !isFinite(s2)) continue;
+
         var l = rscale * (1 + Math.random()) * (1 - 0.2*Math.pow(Math.atan(s),2)) * Math.exp(s2/100);
+        if (!isFinite(l)) continue;  // prevent overflow
         var pos = h.mesh.vxs[i];
         var x = pos[0], y = pos[1];
         if (Math.abs(l*s) > 2*rscale) {
@@ -182,10 +186,18 @@ function computeSlopeHatching(h) {
             l /= n;
             for (var k = 0; k < n; k++) {
                 var u = rnorm_local() * rscale, v = rnorm_local() * rscale;
-                strokes.push([[x+u-l, y+v+l*s], [x+u+l, y+v-l*s]]);
+                var p1 = [x+u-l, y+v+l*s];
+                var p2 = [x+u+l, y+v-l*s];
+                if (isFinite(p1[0]) && isFinite(p1[1]) && isFinite(p2[0]) && isFinite(p2[1])) {
+                    strokes.push([p1, p2]);
+                }
             }
         } else {
-            strokes.push([[x-l, y+l*s], [x+l, y-l*s]]);
+            var p1 = [x-l, y+l*s];
+            var p2 = [x+l, y-l*s];
+            if (isFinite(p1[0]) && isFinite(p1[1]) && isFinite(p2[0]) && isFinite(p2[1])) {
+                strokes.push([p1, p2]);
+            }
         }
     }
     return strokes;

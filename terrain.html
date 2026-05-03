@@ -2,14 +2,14 @@
   <body>
     <div id="all" style="display: flex; flex-direction: row;">
       <div id="controls"
-	   style="display: flex; flex-direction: column; flex: 0 0 120px">
+	   style="display: flex; flex-direction: column; flex: 0 0 140px">
 	<button id="generateBtn">Generate Terrain</button>
 	<button id="regenerateBtn">Regenerate (new seed)</button>
 	<p id="info" style="font-size: 11px; margin: 8px 0; color: #555;"></p>
 	<p id="status" style="font-size: 10px; color: #888;"></p>
       </div>
-      <div id="map" style="margin-left:10px;">
-	<svg id="svg" width="600" height="600"></svg>
+      <div id="map" style="margin-left:10px; overflow:auto; max-width:600px; max-height:600px; border:1px solid #ccc;">
+	<canvas id="canvas"></canvas>
       </div>
     </div>
     <script src="Libraries/d3.js"></script>
@@ -19,19 +19,19 @@
       var regenerateBtn = document.getElementById("regenerateBtn");
       var info = document.getElementById("info");
       var status = document.getElementById("status");
-      var svg = d3.select("#svg");
+      var container = d3.select("#map");
 
       function updateInfo(config) {
 	  info.innerHTML = `Size: ${config.size}px<br>
 River count: ${config.riverCount}<br>
-Moisture: ${config.moisture}<br>
+Moisture: ${config.moisture.toFixed(2)}<br>
 Contours: ${config.contourInterval}<br>
 Seed: ${config.seed}`;
       }
 
       generateBtn.onclick = function () {
 	  status.textContent = "Generating…";
-	  Terrain.test(svg).then(config => {
+	  Terrain.test(container).then(config => {
 	      updateInfo(config);
 	      status.textContent = "Done";
 	      setTimeout(() => status.textContent = "", 1500);
@@ -40,8 +40,8 @@ Seed: ${config.seed}`;
 
       regenerateBtn.onclick = function () {
 	  status.textContent = "Regenerating…";
-	  Terrain.cancel && Terrain.cancel(); // cancel any running worker
-	  Terrain.test(svg).then(config => {
+	  Terrain.cancel && Terrain.cancel();
+	  Terrain.test(container).then(config => {
 	      updateInfo(config);
 	      status.textContent = "Done";
 	      setTimeout(() => status.textContent = "", 1500);

@@ -13,10 +13,16 @@ let terrainConfig = null;
 function renderResult(canvas, result) {
     const { heights, rivers, biomes, contours, config } = result;
     const ctx = canvas.getContext('2d');
-    const w = config.size | 0; // force integer
-    const h = config.size | 0;
-    console.log('Render: size=', w, 'heights dims:', heights.length, heights[0].length);
-    const imgData = ctx.createImageData(w, h);
+    const size = config.size | 0;
+    console.log('Render: size=', size, 'heights dims:', heights.length, heights[0].length);
+
+    // Set canvas pixel dimensions
+    if (canvas.width !== size || canvas.height !== size) {
+        canvas.width = size;
+        canvas.height = size;
+    }
+
+    const imgData = ctx.createImageData(size, size);
     const data = imgData.data;
 
     // Biome color palette
@@ -32,15 +38,15 @@ function renderResult(canvas, result) {
     ];
 
     // Simple hillshade using Sobel-like gradient
-    for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-            const idx = (y * w + x) * 4;
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const idx = (y * size + x) * 4;
             const biomeId = biomes[y][x];
             const baseColor = palette[biomeId] || palette[3];
 
             // Compute slope shading from nearby height samples
             let dx = 0, dy = 0;
-            if (x > 0 && x < w-1 && y > 0 && y < h-1) {
+            if (x > 0 && x < size-1 && y > 0 && y < size-1) {
                 dx = (heights[y][x+1] - heights[y][x-1]) * 0.5;
                 dy = (heights[y+1][x] - heights[y-1][x]) * 0.5;
             }
@@ -61,7 +67,7 @@ function renderResult(canvas, result) {
     if (rivers.length > 0) {
         ctx.save();
         ctx.strokeStyle = '#1565C0';
-        ctx.lineWidth = Math.max(2, w/256);
+        ctx.lineWidth = Math.max(2, size/256);
         ctx.lineCap = 'round';
         ctx.globalAlpha = 0.85;
         ctx.beginPath();
@@ -79,9 +85,9 @@ function renderResult(canvas, result) {
     // Contours (thin grey lines)
     if (contours.length > 0) {
         ctx.save();
-        ctx.strokeStyle = '#444';
+        ctx.strokeStyle = '#333';
         ctx.lineWidth = 1;
-        ctx.globalAlpha = 0.7;
+        ctx.globalAlpha = 0.6;
         ctx.beginPath();
         for (let contour of contours) {
             const pts = contour.line;
@@ -97,14 +103,11 @@ function renderResult(canvas, result) {
 }
 
 //
-//  Load grammar and create/start worker
+//  Load grammar
 //
-async function loadConfig() {
-    if (terrainConfig) return terrainConfig;
-    const resp = await fetch('terrain.rules');
-    const text = await resp.text();
-    terrainConfig = TGrid.generateTerrain(text);
-    return terrainConfig;
+async function loadTerrainRules() {
+    const response = await fetch('terrain.rules');
+    return await response.text();
 }
 
 //
@@ -128,25 +131,37 @@ function cancel() {
 }
 
 //
-//  Main test function - asynchronous
+//  Main test function - asynchronous, returns Promise<config>
 //
-async function test(svg) {
-    // Clear any previous
-    svg.selectAll('*').remove();
+async function test(container) {
+    // Clear previous canvas
+    container.selectAll('canvas').remove();
 
-    // Load config (or use cached)
-    const config = await loadConfig();
+    // Load config (cached after first call)
+    if (!terrainConfig) {
+        const rulesText = await loadTerrainRules();
+        terrainConfig = TGrid.generateTerrain(rulesText);
+    }
+    const config = terrainConfig;
 
-    // Create canvas element
+    console.log('Terrain config:', config);
+
+    // Create canvas element (pixel dimensions = terrain size)
     const canvas = document.createElement('canvas');
     canvas.width = config.size;
     canvas.height = config.size;
-    canvas.style.width = config.size + 'px';
-    canvas.style.height = config.size + 'px';
+    // Visual size: fit within container (max 600px) but keep aspect ratio
+    const maxDisplay = 600;
+    const displaySize = Math.min(size, maxDisplay);
+    canvas.style.width = displaySize + 'px';
+    canvas.style.height = displaySize + 'px';
     canvas.style.imageRendering = 'pixelated';
-    svg.node().appendChild(canvas);
+    canvas.style.border = '1px solid #999';
+    canvas.style.display = 'block';
 
-    // Spawn worker and wait for result
+    container.node().appendChild(canvas);
+
+    // Wait for worker result
     return new Promise((resolve) => {
         const w = getWorker();
         w.onmessage = function(e) {
@@ -154,6 +169,15 @@ async function test(svg) {
             renderResult(canvas, result);
             resolve(config);
         };
+        w.postMessage({ config });
+    });
+}
+
+export default {
+    test,
+    cancel
+};
+
         w.postMessage({ config });
     });
 }
